@@ -11,7 +11,6 @@ from bs4 import BeautifulSoup
 import requests
 import re
 import random
-from pymongo import MongoClient
 import pandas as pd
 import multiprocessing as mp
 
@@ -43,15 +42,15 @@ UserAgent = [
 def singlePageExtract(url):
     # Get author's organization and paper keywords
     org = ''
-    
+
     print(url)
     # Set waiting time to avoid high traffic
     browser.implicitly_wait(random.randint(2, 3))
-    
+
     # Get target page information
     tempo_html = requests.get(url,  headers = requestHeader(url))
     tempo_soup = BeautifulSoup(tempo_html.text, 'lxml')
-    
+
     # Find and collect authors' organization
     try:
         collect = tempo_soup.find('dl', {'class':'ui-ncbi-toggler-slave'}).find_all('dd')
@@ -59,13 +58,13 @@ def singlePageExtract(url):
             org += ';' + single.get_text()
     except:
         org = 'ORGANIZATION_NA'
-    
+
     # Collect article' keywords
     try:
         keywords = tempo_soup.find('div', {'class':'keywords'}).find('p').get_text().split(';')
     except:
         keywords = 'KEYWORDS_NA'
-    
+
     return org, keywords
 
 def requestHeader(url):
@@ -78,19 +77,19 @@ def requestHeader(url):
             }
     return headers
 
-    
+
 def getMaxPageNum(searchWord):
     # Build search link
     url = 'https://www.ncbi.nlm.nih.gov/pubmed/?term=' + searchWord
-    
+
     browser.get(url)
     browser.implicitly_wait(1)
-    
+
     # Get maximum page number from returned research result
     soup = BeautifulSoup(browser.page_source, "lxml")
     max_num = int(soup.find('input', {'id':'pageno2'}).get('last'))
     return max_num
-    
+
 
 def multiCore(url_list):
     # Multiprocessing
@@ -107,6 +106,17 @@ def multiCore(url_list):
 def extractWrite(url):
     # Extract information and write into MongoDB
     org, keywords = singlePageExtract(url)
+
+    print('############################################')
+    print('org')
+    print(org)
+    print('############################################')
+
+    print('############################################')
+    print('keywords')
+    print(keywords)
+    print('############################################')
+
     # Extract title, author, date and other information
     title = row.find('a').get_text()
     author = row.find('p', {'class':'desc'}).get_text()
@@ -131,11 +141,11 @@ def extractWrite(url):
     	print(data, 'already exists.')
     else:
         # Insert data into MongoDB's Pubmed database's med_nlp collections
-        db.med_nlp.insertOne(data)  
+        db.med_nlp.insertOne(data)
 
 
 def informationExtraction():
-    # Extract and build data 
+    # Extract and build data
     # Parse html information
     soup = BeautifulSoup(browser.page_source, "lxml")
     # Find sections with desired information
@@ -143,13 +153,13 @@ def informationExtraction():
 
     # Create/empty url_list to store all the new urls
     url_list = []
-    
+
     # Iterate to extract information like author, title, journal, etc
     for row in all_div:
         # Build article's individual link
         link = default_link + row.find('a').get('href')
         url_list.append(link)
-    
+
     # Operate multiprocessing
     multiCore(url_list)
 
@@ -163,21 +173,18 @@ if __name__ == "__main__":
     # Website to scrape
     default_link = 'https://www.ncbi.nlm.nih.gov'
 
-    # Start web browser
-    browser = webdriver.Chrome('/home/katon/Desktop/chromedriver')
-
-    # Start MongoDB
-    MONGO_HOST= 'mongodb://localhost:27017/'
-    client = MongoClient(MONGO_HOST)
-
-    # Create or load Pubmed database
-    db = client.Pubmed
+    # Initiate browser
+    options = webdriver.ChromeOptions()
+    options.add_argument('--ignore-certificate-errors')
+    options.add_argument("--test-type")
+    options.binary_location = "/usr/bin/chromium"
+    browser = webdriver.Chrome(options=options)
 
     # Get input
-    searchKeyWords = input("Please input your search key words/phrases!")
+    #  searchKeyWords = input("Please input your search key words/phrases!")
 
     # By default
-    # searchKeyWords = 'natural language processing clinical'
+    searchKeyWords = 'natural language processing clinical'
 
     # Get max page number
     max_number = getMaxPageNum(searchKeyWords)
@@ -190,11 +197,3 @@ if __name__ == "__main__":
         count += 1
 
     print("finish")
-
-## Access MongdoDB to analyze data   
-#conn = MongoClient(host='localhost',port=27017)
-#pub = conn['Pubmed']
-#nlp = pub['med_nlp']
-#
-#data = pd.DataFrame(list(nlp.find()))
-#print(data)
