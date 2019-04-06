@@ -1,11 +1,12 @@
 import pandas as pd
 import pycountry
+import json
 from math import pi
 from bokeh.io import output_file, show
 from bokeh.palettes import Category20c
 from bokeh.plotting import figure
 from bokeh.transform import cumsum
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 output_file("pie.html")
 
@@ -23,22 +24,33 @@ city = defaultdict(int)
 city_list = set([])
 country_list = []
 
+# List of relationships between cities
+relationships = []
+
 # REMOVE NUM CITIES AFTERWARD
 NUM_CITIES = 1000
-THRESHOLD = 10
+THRESHOLD = 1
+
 for x in d['country'][:NUM_CITIES]:
 
     # Get rid of '.'
     x = x.replace('.', '')
 
+    # One relationship
+    relationship = set()
+
     # Split different universities
     for y in x.split(';'):
+
         # Split strings in title of uni, to extract city
         for z in y.split(','):
             # Strip any whitespace
             z = z.strip()
             if 'USA' in z:
                 z = 'United States'
+
+            if 'Korea' in z:
+                continue
 
             # Check if it has numbers
             if any(char.isdigit() for char in z):
@@ -53,7 +65,25 @@ for x in d['country'][:NUM_CITIES]:
                 continue
 
             # Drop if it contains some special words
-            if 'University' in z or 'Faculty' in z or 'Clinic' in z or 'School' in z:
+            special_words = ['Research', 'University', 'Clinic', 'School',
+                             'Faculty', 'College', 'Healthcare', 'Pharmacy',
+                             'Center', 'Faculté', 'Patients', 'Hôpital',
+                             'Partners', 'Veteran']
+            cont = False
+            for word in special_words:
+                if word in z:
+                    cont = True
+                    break
+            if cont:
+                continue
+
+            # Check if string is allcaps
+            allcaps = False
+            for word in z.split(" "):
+                if word.isupper():
+                    allcaps = True
+                    break
+            if allcaps:
                 continue
 
             # Check if it's a country
@@ -67,36 +97,68 @@ for x in d['country'][:NUM_CITIES]:
             else:
                 country_list.append(z)
                 continue
+
             city[z] += 1
             city_list.add(z)
+
+            # Add the city to the relationship set
+            relationship.add(z)
+
+        # Add the relationship to the list
+        if len(relationship) == 2:
+            relationships.append(frozenset(relationship))
+
+
+# Count the relationships
+relationships = Counter(relationships)
+
+# Sort in descending order, and take most frequent
+relationships = sorted(relationships.items(), key=lambda x: x[1], reverse=True)
+relationships = [x for x in relationships if x[1] > 4]
 
 # Sort and filter out some cities
 sorted_city_list = sorted(city.items(), key=lambda x: x[1], reverse= True)
 city_list_top = [x for x in sorted_city_list if x[1] > THRESHOLD]
 
-# Get selected city list
-unique_list = [x[0] for x in city_list_top]
+# Generate json for d3 graph plot
+graph_data = {
+        'nodes': [],
+        'links': []
+        }
+city_list_top_ = [city[0] for city in city_list_top]
+for city in city_list_top:
+    for rel in relationships:
+        if city[0] in rel[0]:
+            both_cities = list(rel[0])
+            if both_cities[0] in city_list_top_ and both_cities[1] in city_list_top_:
+                if not city[0] in graph_data['nodes']:
+                    graph_data['nodes'].append(city)
+                graph_data['links'].append(rel[0])
 
-# Adapt a little bit above code to get all the cities with their cooperation cities
-relat = {}
+# Reformat data a bit
+graph_data['links'] = list(set(graph_data['links']))
+graph_data['nodes'] = list(set(graph_data['nodes']))
 
-for x in unique_list:
-    relat[x] = defaultdict(int)
+links = []
+for link in graph_data['links']:
+    links.append({
+        'source': list(link)[0],
+        'target': list(link)[1]
+        })
+graph_data['links'] = links
 
-for x in d['country'][:NUM_CITIES]:
-    x = x.replace('.','')
-    temp = []
-    for y in x.split(';'):
-        temp.append(y.strip())
+nodes = []
+for node in graph_data['nodes']:
+    nodes.append({
+        'name': node[0],
+        'num_pub': node[1]
+        })
+graph_data['nodes'] = nodes
 
-    for z in temp:
-        if z in unique_list:
-            for m in temp:
-                if m != z and m in unique_list:
-                    relat[z][m] += 1
-
-# Calcualte how many cooperation cities each city has
-temp = sorted(relat.items(), key = lambda x:len(x[1]), reverse = True)
+# Write out .json
+filename = 'cities.json'
+with open(filename, 'w') as f:
+    json.dump(graph_data, f)
 
 
 # Plot pie chart
@@ -136,13 +198,6 @@ countFrame['Count'] = [int(x) for x in yearCount.values()]
 
 # Plot bar chart
 output_file("bar_sorted.html")
-
-fruits = ['Apples', 'Pears', 'Nectarines', 'Plums', 'Grapes', 'Strawberries']
-counts = [5, 3, 4, 2, 4, 6]
-
-# sorting the bars means sorting the range factors
-sorted_fruits = sorted(fruits, key=lambda x: counts[fruits.index(x)])
-
 
 p = figure(
         plot_height=350,
