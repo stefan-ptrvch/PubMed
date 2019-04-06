@@ -6,6 +6,7 @@ from bokeh.io import output_file, show
 from bokeh.palettes import Category20c
 from bokeh.plotting import figure
 from bokeh.transform import cumsum
+from bokeh.embed import components
 from collections import defaultdict, Counter
 
 output_file("pie.html")
@@ -180,7 +181,12 @@ p.axis.axis_label=None
 p.axis.visible=False
 p.grid.grid_line_color = None
 
-show(p)
+print('###########################################################')
+script, div = components(p)
+print(script)
+print(div)
+
+#  show(p)
 
 
 # Plot number of papers published each year
@@ -217,6 +223,9 @@ p.vbar(x='Year', top='Count', width=0.9, source=countFrame)
 p.xgrid.grid_line_color = None
 p.y_range.start = 0
 
-show(p)
+print('###########################################################')
+script, div = components(p)
+print(script)
+print(div)
 
-
+#  show(p)
